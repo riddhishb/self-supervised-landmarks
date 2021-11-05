@@ -1,7 +1,7 @@
 import torch
 import os
 import os.path as osp
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, dataset
 # from torchvision import transforms, utils
 from scipy.ndimage import affine_transform
 import itertools
@@ -58,6 +58,23 @@ def get_affine(deg, range):
 	R[2, 3] = del_z
 	return R
 
+def get_dataset_temp(model_type, data_dir, batch_size, file_type, data_type, noise):
+
+	if model_type == "2d":
+		dataset = image_data_2d(data_dir, file_type=file_type, data_type=data_type, noise=noise)
+	if data_type == "train":
+		shuffle = True
+	else:
+		shuffle = False
+
+	return DataLoader(
+	  dataset,
+	  batch_size=batch_size,
+	  shuffle=shuffle,
+	  pin_memory=True,
+	  drop_last=True
+	)
+
 def get_dataset(dataType, datamean, datastd, dataDirPath, batchSz, cv=None, train=True,  noise=False, indiv=False):
 
 	if dataType == 'phantom_atlas':
@@ -107,30 +124,6 @@ def get_dataset(dataType, datamean, datastd, dataDirPath, batchSz, cv=None, trai
 	#   normalize = 
 	)
 
-class phantomImageDataset(Dataset):
-	'''
-	Data loader class for the 
-	'''
-	def __init__(self, dirpath, train=None):
-		self.inDir = dirpath
-		if train is not None:
-			folder_path = osp.join(dirpath, 'Train') if train else osp.join(dirpath, 'Val')
-		self.data = [osp.join(folder_path, filep) for filep in os.listdir(folder_path)]
-	
-	def __len__(self):
-		return len(self.data)
-	
-	def __getitem__(self, index):
-		img_path = self.data[index % len(self.data)]
-		img = np.load(img_path)
-		# print(img.shape)
-		# img = np.array(Image.open(img_path))
-		# img = img.reshape([img.shape[0], img.shape[1], 1])
-		# img = np.array([img])
-		img = torch.from_numpy(img.astype(np.double))
-		img = img.permute(2, 0, 1)
-		# img = transforms.ToTensor()(img)
-		return img
 
 class phantomImageDataset_Pairs(Dataset):
 	'''
@@ -176,88 +169,51 @@ class phantomImageDataset_Pairs(Dataset):
 		return img
 
 
-class phantomImageDataset_Noisy(Dataset):
+class image_data_2d(Dataset):
 	'''
 	Data Loader class for Phantom Data Pairs
 	'''
-	def __init__(self, dirpath, train=None):
-		self.inDir = dirpath
-		if train is not None:
-			folder_path = osp.join(dirpath, 'TrainPairs') if train else osp.join(dirpath, 'ValPairs')
-		self.data = sorted([osp.join(folder_path, filep) for filep in os.listdir(folder_path)])
-		
-		self.pairIndices = np.zeros([len(self.data)**2, 2])
-		# compute sigma from noise range 
-		self.noiseVars = np.random.uniform(low=0.1, high=2, size=[len(self.data)**2, 2])
-		tempPrd = itertools.product(np.arange(len(self.data)), np.arange(len(self.data)))
-		count = 0
-		for i in tempPrd:
-			self.pairIndices[count, 0] = i[0]
-			self.pairIndices[count, 1] = i[1]
-			count += 1
+	def __init__(self, dirpath, file_type="npy", data_type='train',  noise=False):
+		'''
+		Dataloader for 2D image datasets --> this is for training and validation
+		--> file_type denotes the type in which images are stored, it can be "npy" or "png/jpg"
+		--> data_type can be train validation or test
+		The directory should have three directories --> train validation or test
+		'''
 
-	def __len__(self):
-		return len(self.pairIndices)
-	
-	def __getitem__(self, index):
-		idx = self.pairIndices[index % len(self.pairIndices), :]
-		curNoise = self.noiseVars[index % len(self.pairIndices), :]
-		img_path_s = self.data[int(idx[0])]
-		img_path_t = self.data[int(idx[1])]
-		imgS = np.load(img_path_s)
-		imgT = np.load(img_path_t)
-		imgSnoisy = imgS + curNoise[0]*np.random.normal(size=imgS.shape)
-		imgTnoisy = imgT + curNoise[1]*np.random.normal(size=imgT.shape)
-		curNoise = torch.from_numpy(curNoise.astype(np.float64))
-		imgS = torch.from_numpy(imgS.astype(np.float64))
-		imgS = imgS.permute(2, 0, 1)
-		imgSnoisy = torch.from_numpy(imgSnoisy.astype(np.float64))
-		imgSnoisy = imgSnoisy.permute(2, 0, 1)
-		imgT = torch.from_numpy(imgT.astype(np.float64))
-		imgT = imgT.permute(2, 0, 1)
-		imgTnoisy = torch.from_numpy(imgTnoisy.astype(np.float64))
-		imgTnoisy = imgTnoisy.permute(2, 0, 1)
-		# combine imgS and imgT 
-		img = torch.cat([imgS, imgT], 0)
-		imgnoise = torch.cat([imgSnoisy, imgTnoisy], 0)
-		return [img, imgnoise, curNoise]
-
-class boxbumpDataset_Pairs(Dataset):
-	'''
-	Data Loader class for Phantom Data Pairs
-	'''
-	def __init__(self, dirpath, train=None):
 		self.inDir = dirpath
-		if train is not None:
-			folder_path = osp.join(dirpath, 'TrainPairs') if train else osp.join(dirpath, 'ValPairs')
+		self.noise = noise
+		folder_path = osp.join(dirpath, data_type)
 		self.data = [osp.join(folder_path, filep) for filep in os.listdir(folder_path)]
-		self.pairIndices = np.zeros([len(self.data)**2, 2])
-		tempPrd = itertools.product(np.arange(len(self.data)), np.arange(len(self.data)))
-		count = 0
-		for i in tempPrd:
-			self.pairIndices[count, 0] = i[0]
-			self.pairIndices[count, 1] = i[1]
-			count += 1
+		self.size = len(self.data)
+		if self.noise:
+			self.noiseVars = np.random.uniform(low=0.1, high=2, size=[len(self.data), 2])
 
 	def __len__(self):
-		return len(self.pairIndices)
+		return len(self.data)
 	
 	def __getitem__(self, index):
-		idx = self.pairIndices[index % len(self.pairIndices), :]
-		img_path_s = self.data[int(idx[0])]
-		img_path_t = self.data[int(idx[1])]
+
+		tmpid = torch.randperm(self.size)
+		img_path_s = self.data[index % self.size]
+		img_path_t = self.data[tmpid[0] % self.size]
 		imgS = np.load(img_path_s)
 		imgT = np.load(img_path_t)
-		imgS = imgS.reshape(imgS.shape[0], imgS.shape[1], 1)
-		imgT = imgT.reshape(imgT.shape[0], imgT.shape[1], 1)
+		if self.noise:
+			curNoise = self.noiseVars[index % self.size, :]
+			imgS = imgS + curNoise[0]*np.random.normal(size=imgS.shape)
+			imgT = imgT + curNoise[1]*np.random.normal(size=imgT.shape)
+
 		imgS = torch.from_numpy(imgS.astype(np.float64))
-		# print(imgS.shape)
 		imgS = imgS.permute(2, 0, 1)
 		imgT = torch.from_numpy(imgT.astype(np.float64))
 		imgT = imgT.permute(2, 0, 1)
 		# combine imgS and imgT 
 		img = torch.cat([imgS, imgT], 0)
+
 		return img
+
+
 
 class diatomsDataset_Pairs(Dataset):
 	'''

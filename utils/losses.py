@@ -224,3 +224,10 @@ def l1_loss(x, reg_x, device):
     relMSE = MSE/F.mse_loss(0*reg_x.to(device), x.to(device), reduction="mean")
     return loss, relMSE, denon
 
+def dice_loss(x,reg_x):
+    
+    numerator = 2 * torch.sum(F.sigmoid(reg_x) * x)
+    denominator = torch.sum(F.sigmoid(reg_x) + x)
+    return 1 - (numerator + 1) / (denominator + 1)
+
+

@@ -34,14 +34,6 @@ def grid_sample(input, grid, canvas = None):
         padded_output = output * output_mask + canvas * (1 - output_mask)
         return padded_output
 
-def dice_loss(x,reg_x):
-    
-    numerator = 2 * torch.sum(F.sigmoid(reg_x) * x)
-    denominator = torch.sum(F.sigmoid(reg_x) + x)
-    return 1 - (numerator + 1) / (denominator + 1)
-
-
-
 def atanh(x):
     return 0.5*torch.log((1+x)/(1-x))
 
@@ -118,3 +110,21 @@ def online_mean_and_sd_3d(loader):
         cnt += nb_pixels
 
     return fst_moment, torch.sqrt(snd_moment - fst_moment ** 2)
+
+
+'''
+Train helper
+	prints and logs values during training
+'''
+def log_print(logger, values):
+	# write to csv
+	if not isinstance(values[0], str):
+		values = ['%.5f' % i for i in values]
+	string_values = [str(i) for i in values]
+	log_string = ','.join(string_values)
+	logger.write(log_string + '\n')
+	# print
+	for i in range(len(string_values)):
+		while len(string_values[i]) < 15:
+			string_values[i] += ' '
+	print(' '.join(string_values))
