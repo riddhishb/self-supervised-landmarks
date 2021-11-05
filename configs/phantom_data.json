@@ -1,7 +1,7 @@
 {
-    "dataDir": "/home/sci/riddhishb/Documents/git-repos/DeepLocUR/Data/PhantomData/",
-    "saveDir": "/home/sci/riddhishb/Documents/git-repos/DeepLocUR/Results/PhantomFullSiamese_BN_unbounded/",
-    "num_epochs": 10,
+    "data_dir": "/home/sci/riddhishb/Documents/git-repos/self-supervised-landmarks/data/shepp_logan_phantom/",
+    "save_dir": "/home/sci/riddhishb/Documents/git-repos/self-supervised-landmarks/results/phantom_results/",
+    "num_epochs": 1000,
     "print_iter": 100,
     "save_iter": 1,
     "num_landmarks": 10,
@@ -13,5 +13,6 @@
     "learning_rate": 0.0001,
     "start_epsilon": 0.00001,
     "add_corners":true,
-    "reg_alpha":0.01
+    "reg_alpha":0.01,
+    "loss_type": "l2"
   }

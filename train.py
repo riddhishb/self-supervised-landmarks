@@ -19,12 +19,12 @@ def train(model, config, device):
 	# first load the data
 	
 	lr = config['learning_rate']
-	dataDir = config['dataDir']
+	data_dir = config['data_dir']
 	save_dir = config['save_dir']
 	num_epochs = config['num_epochs']
 	print_iter = config['print_iter']
 	save_iter = config['save_iter']
-	batchSz = config['batch_size']
+	batch_size = config['batch_size']
 	start_epsilon = config['start_epsilon']
 	loadStep = config['load_step']
 	reg_alpha = config['reg_alpha']
@@ -33,23 +33,28 @@ def train(model, config, device):
 	# model, optimizer = nt.load_checkpoint(model, optimizer, saveDir, str(loadStep), loadStep)
 	num_land = config['num_landmarks']
 	model.train()
-	data_loader = dt.get_dataset('phantom_pairs', 0, 0,dataDir, batchSz, train=True,  noise=True)
-	val_loader = dt.get_dataset('phantom_pairs', 0, 0, dataDir, batchSz, train=False, noise=False)
+	# data_loader = dt.get_dataset('phantom_pairs', 0, 0, dataDir, batchSz, train=True,  noise=True)
+	# val_loader = dt.get_dataset('phantom_pairs', 0, 0, dataDir, batchSz, train=False, noise=False)
+	train_loader = dt.get_dataset_temp('2d', data_dir, batch_size, file_type='npy', data_type='train', noise=False)
+	val_loader = dt.get_dataset_temp('2d', data_dir, batch_size, file_type='npy', data_type='validation', noise=False)
 	
 	epoch = loadStep
 	best_val = float('inf')
+	logger = open(save_dir + "train_log.csv", "w+")
+	nt.log_print(logger, ["Epoch", "train_loss", "train_reg_loss", "val_loss"])
+
 	while epoch < num_epochs:
 		
-		avgLoss = 0
-		avgRelLoss = 0
+		train_loss = 0
+		train_reg_loss = 0
 		count = 0
 		model = model.float()
 		if epoch < 1:
-			noweps = np.linspace(start_epsilon, 0, len(data_loader))
+			noweps = np.linspace(start_epsilon, 0, len(train_loader))
 		else:
-			noweps = np.linspace(0, 0, len(data_loader))
+			noweps = np.linspace(0, 0, len(train_loader))
 		model.train()
-		for x in data_loader:
+		for x in train_loader:
 			# print(x.shape)
 			x = x.to(device)
 			epsilon = noweps[count]
@@ -57,93 +62,37 @@ def train(model, config, device):
 			[imgS, imgT] = x.split([input_channels, input_channels], 1)
 			reg_loss = ls.cond_num_loss_v2(A, device)
 			l2_loss, rel_loss, denon = ls.l2_loss(imgT.float(), outImg, device)
-			loss = l2_loss + reg_alpha*reg_loss
-			# if count % print_iter == 0:
-			#	 visualEvol(model, dataDir, batchSz, device, saveDir, len(data_loader)*epoch + count)
-			#	 parentDir = saveDir + '/Train/'
-			#	 imgS = imgS[0, ...].reshape(1, 3, 256, 256)
-			#	 imgT = imgT[0, ...].reshape(1, 3, 256, 256)
-			#	 imgS = imgS.permute(0, 2, 3 ,1)
-			#	 imgS = imgS.squeeze().cpu().detach().numpy()
-			#	 imgT = imgT.permute(0, 2, 3 ,1)
-			#	 imgT = imgT.squeeze().cpu().detach().numpy()
-			#	 plt.imsave(parentDir + 'imgS' + str(count) + '.png', imgS.astype(np.uint8))
-			#	 plt.imsave(parentDir + 'imgT' + str(count) + '.png', imgT.astype(np.uint8))
-			#	 # np.save(parentDir + 'inImg' + str(count) + '.npy', inImg)
-			#	 outImg = outImg[0, ...].reshape(1, 3, 256, 256)
-			#	 finalOut = outImg.permute(0, 2, 3, 1)
-			#	 finalOut = finalOut.squeeze().cpu().detach().numpy()
-			#	 plt.imsave(parentDir + 'regImg' + str(count) + '.png', finalOut.astype(np.uint8))
-			#	 # np.save(parentDir + 'regImg' + str(count) + '.npy', finalOut)
-			#	 outPoints = landS.cpu().detach().numpy()
-			#	 outPoints = outPoints[0, ...]
-			#	 outPoints[:, 0] = (outPoints[:, 0]+1)*0.5*(255)
-			#	 outPoints[:, 1] = (outPoints[:, 1]+1)*0.5*(255)
-			#	 np.save(parentDir + 'landS' + str(count) + '.npy', outPoints)
-			#	 fig, ax = plt.subplots()
-			#	 plt.imshow(imgS.astype(np.uint8))
-			#	 for i in range(outPoints.shape[0]):
-			#		 ax.scatter(outPoints[i, 0], outPoints[i, 1], c='c', edgecolors='k')
-			#		 ax.text(outPoints[i, 0]+0.3, outPoints[i, 1]+0.3, str(i), fontsize=9, c='m')
-			#	 plt.savefig(parentDir + 'overlayImg_source' + str(count) + '.png')
-			#	 plt.clf()
-
-			#	 outPoints = landT.cpu().detach().numpy()
-			#	 outPoints = outPoints[0, ...]
-			#	 outPoints[:, 0] = (outPoints[:, 0]+1)*0.5*(255)
-			#	 outPoints[:, 1] = (outPoints[:, 1]+1)*0.5*(255)
-			#	 np.save(parentDir + 'landT' + str(count) + '.npy', outPoints)
-			#	 fig, ax = plt.subplots()
-			#	 plt.imshow(imgT.astype(np.uint8))
-			#	 for i in range(outPoints.shape[0]):
-			#		 ax.scatter(outPoints[i, 0], outPoints[i, 1], c='c', edgecolors='k')
-			#		 ax.text(outPoints[i, 0]+0.3, outPoints[i, 1]+0.3, str(i), fontsize=9, c='m')
-			#	 plt.savefig(parentDir + 'overlayImg_target' + str(count) + '.png')
-			#	 plt.clf()
-
-			#	 # also need to plot the image difference 
-			#	 fig, axis = plt.subplots(figsize=(5, 5))
-			#	 axis.imshow(imgT.astype(np.uint8), cmap='Reds', alpha=0.6)
-			#	 axis.imshow(finalOut.astype(np.uint8), cmap='Blues', alpha=0.6)
-			#	 axis.set_title('Images overlayed')
-			#	 plt.savefig(parentDir + 'regAcc' + str(count) + '.png')
-			#	 plt.clf()
-
-			
+			loss = l2_loss + reg_alpha*reg_loss			
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
-			avgLoss += loss.item()
-			avgRelLoss += rel_loss.item()
-			if count % print_iter == 0:
-				print('Loss = ', loss.item(), rel_loss.item(), reg_loss.item(), len(data_loader), x.shape, batchSz, count)
-
-			count +=1
+			train_loss += loss.item()
+			train_reg_loss += reg_loss.item()
+			count += 1
 		epoch += 1
-
+		train_loss = train_loss / count
+		train_reg_loss = train_reg_loss / count
 		model.eval()
 		with torch.no_grad():
-			tot_loss = 0
-			tot_rel_loss = 0
+			val_loss = 0
 			count_new = 0
 			for x in val_loader:
 				x = x.to(device)
 				outImg, landT, landS, A = model(x.float(), 0, False, 0, 0)
 				[imgS, imgT] = x.split([input_channels, input_channels], 1)
 				loss, rel_loss, denon = ls.l2_loss(imgT.float(), outImg, device)
-				tot_loss += loss.item()
-				tot_rel_loss += rel_loss.item()
+				val_loss += loss.item()
 				count_new += 1
 				# these lines are for spending less time during validation
 				if count_new > 10:
 					break
 				# break
-			tot_loss = tot_loss/count_new
-			tot_rel_loss = tot_rel_loss/count_new
-			print('Epoch, count = ', epoch, count, ' Loss = ', tot_loss, tot_rel_loss)
+			val_loss = val_loss/count_new
+			nt.log_print(logger, [epoch, train_loss, train_reg_loss, val_loss] )
+			# print('Epoch = ', epoch, ' Train Loss = ', ' Val Loss = ', tot_loss, tot_rel_loss)
 		# add a part to save some test images and their predicted things
-		if best_val > tot_loss:
-			best_val = tot_loss
+		if best_val > val_loss:
+			best_val = val_loss
 			torch.save(model, save_dir + '/best_model.pt')
 
 	torch.save(model, save_dir + '/final_model.pt')
@@ -155,7 +104,7 @@ def runFunction(args):
 	config = json.load(open(args.config_file))
 	# create the save directory
 	save_dir = config['save_dir']
-	if osp.exists(save_dir):
+	if not osp.exists(save_dir):
 		os.makedirs(save_dir)
 
 	# TODO: add an option to print to a log file
