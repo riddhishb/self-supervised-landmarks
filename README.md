@@ -4,8 +4,8 @@ Repository for self-supervised landmark discovery
 
 ### Requirements
 
-pytorch 
-pynrrd (for 3d images)
+- pytorch 
+- pynrrd (for 3d images)
 
 ### Usage
 
@@ -28,3 +28,18 @@ python test.py --model="2d or 3d" --config_file="path to config file" --redu_rem
 redu_remove is a boolean argument that determines if redundant points are removed or not
 use best is  also a boolean argument that determines if the best checkpoint is used or the final checkpoint.
 num_out is an integer that determines the number of particles to be retained after redundancy removal
+
+### Reference
+
+If you are utilizing this code please cite
+
+```
+@inproceedings{bhalodia2020self,
+  title={Self-supervised discovery of anatomical shape landmarks},
+  author={Bhalodia, Riddhish and Kavan, Ladislav and Whitaker, Ross T},
+  booktitle={International Conference on Medical Image Computing and Computer-Assisted Intervention},
+  pages={627--638},
+  year={2020},
+  organization={Springer}
+}
+```
