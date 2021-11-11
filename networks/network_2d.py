@@ -20,7 +20,6 @@ class self_supervised_model_2d(nn.Module):
 		self.numL = config['num_landmarks']
 		self.imgH = config['image_height']
 		self.imgW = config['image_width']
-		self.batchSz = config['batch_size']
 		self.add_corners = config['add_corners']
 		self.input_channels = config['input_channels']
 		# input is a stack of 2 images
@@ -72,10 +71,10 @@ class self_supervised_model_2d(nn.Module):
 		output = F.tanh(self.fc2(x))
 		return output
 	
-	def createKmat(self, input_points, control_points):
+	def createKmat(self, batch_size, input_points, control_points):
 		N = input_points.size(1)
 		M = control_points.size(1)
-		pairwise_diff_batch = input_points.view(self.batchSz, N, 1, 2) - control_points.view(self.batchSz, 1, M, 2)
+		pairwise_diff_batch = input_points.view(batch_size, N, 1, 2) - control_points.view(batch_size, 1, M, 2)
 		pairwise_diff_square = pairwise_diff_batch * pairwise_diff_batch
 		pairwise_dist = pairwise_diff_square[:, :, :, 0] + pairwise_diff_square[:, :, :, 1]
 		repr_matrix = pairwise_dist * torch.log(torch.sqrt(pairwise_dist+0.0001))
@@ -85,35 +84,36 @@ class self_supervised_model_2d(nn.Module):
 		repr_matrix.masked_fill_(mask, 0)
 		return repr_matrix
 
-	def TPS_solve(self, Lt, Ls, epsilon):
+	def TPS_solve(self, batch_size, Lt, Ls, epsilon):
 		N = Ls.size(1)
 		Ls = Ls.float()
 		# first create the tensor (these would be in pytorch)
 		tempZeros = torch.zeros(3, 1).to(self.device)
-		tempZeros = tempZeros.repeat(self.batchSz, 1, 1)
-		b1 = torch.cat([tempZeros, Ls[:, :,0].view(self.batchSz, -1, 1)], dim=1)
-		b2 = torch.cat([tempZeros, Ls[:, :,1].view(self.batchSz, -1, 1)], dim=1)
+		tempZeros = tempZeros.repeat(batch_size, 1, 1)
+		
+		b1 = torch.cat([tempZeros, Ls[:, :,0].view(batch_size, -1, 1)], dim=1)
+		b2 = torch.cat([tempZeros, Ls[:, :,1].view(batch_size, -1, 1)], dim=1)
 		# this part is fixed as the Lt are supervised
 		b = torch.cat([b1, b2], dim=1) # dimension 2(N+3)
-		A = torch.zeros(self.batchSz, (N+3), (N+3))
-		matR = self.createKmat(Lt, Lt)
+		A = torch.zeros(batch_size, (N+3), (N+3))
+		matR = self.createKmat(batch_size, Lt, Lt)
 		A[:, :2, :N].copy_(Lt.transpose(2, 1))
 		A[:, 2, :N].fill_(1)
 		A[:, 3:, :N].copy_(matR)
 		A[:, 3:, N:N+2].copy_(Lt)
 		A[:, 3:, N+2].fill_(1)
-		Abig = torch.zeros(self.batchSz, 2*(N+3), 2*(N+3))
+		Abig = torch.zeros(batch_size, 2*(N+3), 2*(N+3))
 		Abig[:, :(N+3), :(N+3)] = A
 		Abig[:, (N+3):, (N+3):] = A
 		condMat = torch.eye(Abig.shape[1])
 		condMat = condMat.reshape(1, Abig.shape[1], Abig.shape[1])
-		condMat = condMat.repeat(self.batchSz, 1, 1)
+		condMat = condMat.repeat(batch_size, 1, 1)
 		Acond = Abig + epsilon*condMat
 		Acond = Acond.to(self.device)
 		w, LU = torch.solve(b, Acond)
 		return w, Abig
 
-	def imgGrid(self, Is, Ls):
+	def imgGrid(self, batch_size,  Is, Ls):
 		# define a grid then warp it by tps
 		# Is = 1xCxHxW image
 		targetCoord = list(itertools.product(range(self.imgH), range(self.imgW)))
@@ -124,46 +124,47 @@ class self_supervised_model_2d(nn.Module):
 		X = X * 2/ (self.imgW - 1) - 1
 		targetCoord = torch.cat([X, Y], dim=1)
 		targetCoord = targetCoord.reshape(1, targetCoord.shape[0], targetCoord.shape[1])
-		targetCoord = targetCoord.repeat(self.batchSz, 1, 1)
-		matT = self.createKmat(targetCoord, Ls)
+		targetCoord = targetCoord.repeat(batch_size, 1, 1)
+		matT = self.createKmat(batch_size, targetCoord, Ls)
 		# this needs to change according to our formulation 
-		targetCoord_full = torch.cat([matT, targetCoord.float(), torch.ones(self.batchSz, self.imgH*self.imgW, 1).to(self.device).float()], dim = 2)
+		targetCoord_full = torch.cat([matT, targetCoord.float(), torch.ones(batch_size, self.imgH*self.imgW, 1).to(self.device).float()], dim = 2)
 		return targetCoord_full, targetCoord
 	
 	def forward(self, inImg, epsilon, inland, landS, landT):
 		
 		[imgS, imgT] = inImg.split([self.input_channels, self.input_channels], 1)
 		# this will get the batched output 
-		
+		batch_size = inImg.shape[0]
 		if inland:
 			self.landS = landS
 			self.landT = landT
 			self.numL = self.landS.size(1)
 		else:
+			# import pdb; pdb.set_trace()
 			self.landT = self.CNN_landS(imgT)
 			self.landS = self.CNN_landS(imgS)
 
 			if self.add_corners:
 				self.numL = int(self.landT.size(1)*0.5 + 4)
 				# we need to preserve the batching 
-				self.landT = self.landT.view(self.batchSz, self.numL-4, 2)
-				self.landS = self.landS.view(self.batchSz, self.numL-4, 2)
+				self.landT = self.landT.view(batch_size, self.numL-4, 2)
+				self.landS = self.landS.view(batch_size, self.numL-4, 2)
 				# adding the corners
 				temp = torch.from_numpy(np.array([[-1,-1],[-1,1],[1,1],[1,-1]]))
-				temp = temp.repeat(self.batchSz, 1, 1).to(self.device)
+				temp = temp.repeat(batch_size, 1, 1).to(self.device)
 				self.landT = torch.cat([self.landT, temp.float()], 1)
 				self.landS = torch.cat([self.landS, temp.float()], 1)
 			else:
-				self.landT = self.landT.view(self.batchSz, self.numL, 2)
-				self.landS = self.landS.view(self.batchSz, self.numL, 2)
+				self.landT = self.landT.view(batch_size, self.numL, 2)
+				self.landS = self.landS.view(batch_size, self.numL, 2)
 
-		self.w, self.A = self.TPS_solve(self.landT, self.landS, epsilon)
+		self.w, self.A = self.TPS_solve(batch_size, self.landT, self.landS, epsilon)
 		self.w = self.w.float()
-		self.targetCoord, origgrid = self.imgGrid(imgT, self.landT)
+		self.targetCoord, origgrid = self.imgGrid(batch_size, imgT, self.landT)
 
 		# self.sourceCoord = torch.matmul(self.targetCoord, self.w.view(self.batchSz, 2, self.numL + 3).transpose(0, 1))
 		# with batched data we need to use torch bmm 
-		self.sourceCoord = torch.bmm(self.targetCoord, self.w.view(self.batchSz, 2, self.numL + 3).transpose(1, 2))
-		grid = self.sourceCoord.view(self.batchSz, self.imgH, self.imgW, 2).float()
+		self.sourceCoord = torch.bmm(self.targetCoord, self.w.view(batch_size, 2, self.numL + 3).transpose(1, 2))
+		grid = self.sourceCoord.view(batch_size, self.imgH, self.imgW, 2).float()
 		transformed_x = F.grid_sample(imgS.float(), grid, 'bilinear')
 		return transformed_x, self.landT, self.landS, self.A

@@ -15,7 +15,7 @@ class self_supervised_model_3d(nn.Module):
 	'''
 
 	def __init__(self, config, device):
-		super(self_supervised_model_2d, self).__init__()
+		super(self_supervised_model_3d, self).__init__()
 		self.device = device
 		self.numL = config['num_landmarks']
 		self.imgH = config['image_height']
