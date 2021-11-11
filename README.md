@@ -31,7 +31,25 @@ num_out is an integer that determines the number of particles to be retained aft
 
 ### Reference
 
-If you are utilizing this code please cite
+If you are utilizing this code please cite one of the following
+
+1. [Leveraging unsupervised image registration for discovery of landmark shape descriptor](https://www.sciencedirect.com/science/article/abs/pii/S1361841521002036)
+
+```
+@article{bhalodia2021leveraging,
+title = {Leveraging unsupervised image registration for discovery of landmark shape descriptor},
+journal = {Medical Image Analysis},
+volume = {73},
+pages = {102157},
+year = {2021},
+issn = {1361-8415},
+doi = {https://doi.org/10.1016/j.media.2021.102157},
+url = {https://www.sciencedirect.com/science/article/pii/S1361841521002036},
+author = {Riddhish Bhalodia and Shireen Elhabian and Ladislav Kavan and Ross Whitaker}
+}
+```
+
+2. [Self-supervised discovery of anatomical shape landmarks](http://link.springer.com/chapter/10.1007/978-3-030-59719-1_61)
 
 ```
 @inproceedings{bhalodia2020self,
