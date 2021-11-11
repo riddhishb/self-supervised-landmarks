@@ -15,45 +15,40 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 import os.path as osp 
 
 
-def redundancy_removal(model, config, device, red_metric=None):
+def redundancy_removal(model, model_type, loader, config, device, num_out):
 	'''
 	Identifies the points with less threshold and get rid of them
 	'''
 
-	optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.999))
-	dataDir = config['dataDir']
-	saveDir = config['saveDir']
-	num_epochs = config['num_epochs']
-	print_iter = config['print_iter']
-	save_iter = config['save_iter']
-	loadStep = config['load_step']
-	batchSz = config['batch_size']
-	N = config['num_landmarks']
-	model, optimizer = nt.load_checkpoint(model, optimizer, saveDir, str(loadStep), loadStep)
+	if model_type == '3d':
+		img_l = config['image_length']
+	
+	num_land = config['num_landmarks']
+	
+	input_channels = config['input_channels']
 	model.eval()
 	model = model.float()
-	data_loader = ut.get_dataset('phantom_pairs', dataDir, batchSz, train=True, noise=False)
-	red_metric = np.zeros([N, 200])
+
+	red_metric = np.zeros([num_land, 200])
 	count = 0
-	for x in data_loader:
+	for x in loader:
 		x = x.to(device)
 		# base loss 
 		outImg, landT, landS, A = model(x.float(), 0, False, 0, 0)
-		[imgS, imgT] = x.split([3, 3], 1)
-		loss, rel_loss, denon = nt.l2_Loss_2D(imgT.float(), outImg, device)
+		[imgS, imgT] = x.split([input_channels, input_channels], 1)
+		loss, rel_loss, denon = ls.l2_loss(imgT.float(), outImg, device)
 		landS = landS.cpu().detach().numpy()
 		landT = landT.cpu().detach().numpy()
 		# Now compute the things for different landmarks and stuff
-		print(count, len(data_loader))
-		for i in range(N):
-			idx = np.arange(N)
+		for i in range(num_land):
+			idx = np.arange(num_land)
 			idx = np.delete(idx, i)
 			newlandT = landT[:, idx, :]
 			newlandS = landS[:, idx, :]
 			# now run the TPS warp with this parameters
-			[imgS, imgT] = x.split([3, 3], 1)
+			[imgS, imgT] = x.split([input_channels, input_channels], 1)
 			outImg, t, s, A = model(x.float(), 0, True, torch.from_numpy(newlandS).to(device), torch.from_numpy(newlandT).to(device))
-			loss_i, rel_loss_i, denon = nt.l2_Loss_2D(imgT.float(), outImg, device)
+			loss_i, rel_loss_i, denon = ls.l2_loss(imgT.float(), outImg, device)
 			temp = (loss - loss_i)**2
 			red_metric[i, count] = temp.detach().cpu().numpy()
 			t = t.detach().cpu().numpy()
@@ -65,7 +60,10 @@ def redundancy_removal(model, config, device, red_metric=None):
 		if count > 199:
 			break
 	# red_metric = red_metric/count
-	return red_metric
+	# perform thresholding
+	red_metric = red_metric.mean(1)
+	red_ids = np.flip(np.argsort(red_metric))
+	return red_ids[:num_out]
 
 def test(model, model_type, loader, config, device, red_metric=None):
 	'''
@@ -178,7 +176,7 @@ def runFunction(args):
 	loader = dt.get_dataset_temp(model_type, data_dir, 1, file_type='npy', data_type='test', noise=False)
 
 	if args.redu_remove:
-		red_metric = redundancy_removal(model, config, device)
+		red_metric = redundancy_removal(model, model_type, loader, config, device, args.num_out)
 		test(model, model_type, loader, config, device, red_metric=red_metric)
 	else:
 		test(model, model_type, loader, config, device)
@@ -189,6 +187,7 @@ if __name__ == "__main__":
 	parser = ArgumentParser()
 	parser.add_argument("--model", type=str, help="2d or 3d")
 	parser.add_argument("--redu_remove", type=bool, default=False, help="True or False, basically means that the testing is to be does using the reduced points or the same.")
+	parser.add_argument("--num_out", type=int, default=10, help="number of points to be retained")
 	parser.add_argument("--use_best", type=bool, default=True, help="True or false, if false it uses the final model")
 	parser.add_argument("--config_file", type=str, help="configFile for the parameters")
 	args = parser.parse_args()
