@@ -173,7 +173,7 @@ def runFunction(args):
 		model_path = save_dir + '/final_model.pt'
 	
 	model = torch.load(model_path).to(device)
-	loader = dt.get_dataset_temp(model_type, data_dir, 1, file_type='npy', data_type='test', noise=False)
+	loader = dt.get_dataset(model_type, data_dir, 1, file_type='npy', data_type='test', noise=False)
 
 	if args.redu_remove:
 		red_metric = redundancy_removal(model, model_type, loader, config, device, args.num_out)

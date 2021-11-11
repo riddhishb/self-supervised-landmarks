@@ -10,9 +10,10 @@ import utils.losses as ls
 from torch import optim
 from argparse import ArgumentParser
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 import os.path as osp 
 
-def train(model, config, device):
+def train(model, model_type, config, device):
 	'''
 	Training  for the Phantom Data
 	'''
@@ -33,10 +34,8 @@ def train(model, config, device):
 	# model, optimizer = nt.load_checkpoint(model, optimizer, saveDir, str(loadStep), loadStep)
 	num_land = config['num_landmarks']
 	model.train()
-	# data_loader = dt.get_dataset('phantom_pairs', 0, 0, dataDir, batchSz, train=True,  noise=True)
-	# val_loader = dt.get_dataset('phantom_pairs', 0, 0, dataDir, batchSz, train=False, noise=False)
-	train_loader = dt.get_dataset_temp('2d', data_dir, batch_size, file_type='npy', data_type='train', noise=False)
-	val_loader = dt.get_dataset_temp('2d', data_dir, batch_size, file_type='npy', data_type='validation', noise=False)
+	train_loader = dt.get_dataset(model_type, data_dir, batch_size, file_type='npy', data_type='train', noise=False)
+	val_loader = dt.get_dataset(model_type, data_dir, batch_size, file_type='npy', data_type='validation', noise=False)
 	
 	epoch = loadStep
 	best_val = float('inf')
@@ -61,6 +60,7 @@ def train(model, config, device):
 			outImg, landT, landS, A = model(x.float(), epsilon, False, 0, 0)
 			[imgS, imgT] = x.split([input_channels, input_channels], 1)
 			reg_loss = ls.cond_num_loss_v2(A, device)
+			# TODO: loss type
 			l2_loss, rel_loss, denon = ls.l2_loss(imgT.float(), outImg, device)
 			loss = l2_loss + reg_alpha*reg_loss			
 			optimizer.zero_grad()
@@ -80,6 +80,7 @@ def train(model, config, device):
 				x = x.to(device)
 				outImg, landT, landS, A = model(x.float(), 0, False, 0, 0)
 				[imgS, imgT] = x.split([input_channels, input_channels], 1)
+				# TODO: loss type
 				loss, rel_loss, denon = ls.l2_loss(imgT.float(), outImg, device)
 				val_loss += loss.item()
 				count_new += 1
@@ -117,7 +118,7 @@ def runFunction(args):
 	else:
 		model = nt_3d.self_supervised_model_3d(config, device).to(device)
 
-	train(model, config, device)
+	train(model, args.model, config, device)
 	
 
 if __name__ == "__main__":
